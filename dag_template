@@ -1,0 +1,69 @@
+#Start Code
+from airflow.models import DAG
+from datetime import datetime, timedelta
+import boto3
+from airflow.operators.iics_plugin import IICSOperator
+from airflow.operators.publish_plugin import PublishOperator
+from airflow.operators.talend_plugin import TalendOperator
+from airflow.operators.bash_operator import BashOperator
+import asurion_utils as au
+
+# these args will get passed on to each operator
+# you can override them on a per-task basis during operator initialization
+default_args = {
+'owner': 'admin',
+'depends_on_past': False,
+'email_on_failure': True,
+'email_on_retry': False,
+'retries': 0,
+'retry_delay': timedelta(seconds=10),
+'start_date':datetime(2019, 3,18, 20,36,00),
+}
+    
+
+
+dag = DAG('{dagname}',
+            catchup=False,
+            default_args=default_args,
+            default_view="graph",
+            schedule_interval=None,
+            description='python DAG')
+
+
+t0 = TalendOperator(
+    task_id='replicate_job',
+    db_id='1',
+    db_dag_id='1',
+    bash_command='/mnt/efs_airflow/talend_jobs/replicate_job_0.1/replicate_job/replicate_job_run.sh ',
+    dag=dag)
+
+t1 = TalendOperator(
+    task_id='replicate_rel',
+    db_id='2',
+    db_dag_id='1',
+    bash_command='/mnt/efs_airflow/talend_jobs/replicate_rel_0.1/replicate_rel/replicate_rel_run.sh ',
+    dag=dag)
+
+t2 = IICSOperator(
+    task_id='m_eds-carbon-poc-airflow-rel',
+    db_id='3',
+    db_dag_id='1',
+    job_name = "Default/m_eds-carbon-poc-airflow-rel",
+    dag=dag)
+
+t3 = BashOperator(
+    task_id='test_op',
+    bash_command='/mnt/efs_airflow/talend_jobs/test_dag_script.sh ',
+    dag=dag)
+
+p0 = PublishOperator(
+    task_id='publish_dag_status',
+    db_dag_id='1',
+    dag=dag)
+
+
+t0>>t1
+t0>>t2
+t2>>p0
+t1>>t3
+t3>>p0
